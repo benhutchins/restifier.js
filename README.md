@@ -10,7 +10,7 @@ Incude the script:
 <script type="text/javascript" src="restifier.js"></script>
 ```
 
-Then to use restifier.js you construct a client:
+Then construct a client:
 
 ```javascript
 var client = restifier.createJsonClient('https://api.myservice.com/');
