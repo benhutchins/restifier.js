@@ -117,12 +117,13 @@ var client = restify.createJsonClient({
 
 Options:
 
-    Name        Type    Description
-    accept      String  Accept header to send
-    timeout     Number  Amount of time to wait for a socket
-    headers     Object  HTTP headers to set in all requests
-    url         String  Fully-qualified URL to connect to
-    version     String  semver string to set the accept-version
+Name       | Type    | Description
+---------- | ------- | -----------
+accept     | String  | Accept header to send
+timeout    | Number  | Amount of time to wait for a socket
+headers    | Object  | HTTP headers to set in all requests
+url        | String  | Fully-qualified URL to connect to
+version    | String  | semver string to set the accept-version
 
 #### get(path, callback)
 
