@@ -1,0 +1,29 @@
+{
+  "name": "restifier",
+  "version": "1.0.0",
+  "description": "Browser capable clients for Restify.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "dependencies": {
+    "assert-plus": "^0.1.5",
+    "lodash": "^3.9.3"
+  },
+  "devDependencies": {
+    "grunt": "^0.4.5",
+    "grunt-browserify": "^3.8.0",
+    "grunt-contrib-watch": "^0.6.1",
+    "grunt-eslint": "^13.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/benhutchins/restifier.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/benhutchins/restifier/issues"
+  },
+  "homepage": "https://github.com/benhutchins/restifier"
+}
