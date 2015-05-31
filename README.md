@@ -122,7 +122,6 @@ Options:
     timeout     Number  Amount of time to wait for a socket
     headers     Object  HTTP headers to set in all requests
     url         String  Fully-qualified URL to connect to
-    userAgent   String  user-agent string to use; restify inserts one, but you can override it
     version     String  semver string to set the accept-version
 
 #### get(path, callback)
