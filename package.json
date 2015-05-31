@@ -1,6 +1,6 @@
 {
   "name": "restifier.js",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Browser capable clients for Restify.",
   "main": "index.js",
   "directories": {
@@ -18,12 +18,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/benhutchins/restifier.git"
+    "url": "https://github.com/benhutchins/restifier.js.git"
   },
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/benhutchins/restifier/issues"
+    "url": "https://github.com/benhutchins/restifier.js/issues"
   },
-  "homepage": "https://github.com/benhutchins/restifier"
+  "homepage": "https://github.com/benhutchins/restifier.js"
 }
