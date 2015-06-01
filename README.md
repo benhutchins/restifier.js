@@ -182,6 +182,105 @@ client.del('/foo/bar', function(err, req, res) {
 });
 ```
 
+#### createModel(options)
+
+`createModel` is a very simple utility for client-side modeling.
+It returns an ODM-like class that wraps on JSON REST API standards.
+
+```js
+var client = restifier.createJsonClient('https://myservice.com/api/v1');
+
+// Note is a Model object
+var Note = client.createModel({
+  name: 'note',
+  schema: {
+    title:  String,
+    author: String,
+    body:   String,
+    date: { type: Date, default: Date.now },
+  }
+});
+
+// note is a Document object
+var note = new Note();
+
+var data = {
+  title: 'My daily schedule',
+  author: 'myself',
+  body: '10am wake up, 10:30am - 2am Video games, 2:10am Sleep',
+};
+
+// .post will send a `POST` to 'https://myservice.com/api/v1/note'
+note.post(data, function (err, document, req, obj) {
+  console.log('Created new note document with id of', this.id);
+});
+
+```
+
+#### Model
+
+Models are fancy constructors with possible schema definitions. Instances of these models represent documents which can be saved and retrieved from your API.
+
+Use `client.createModel(options)` to create a model class.
+
+Options:
+
+Name       | Type     | Description
+---------- | -------- | -----------
+name       | String   | Model name, in rest this is the subpath of a client base
+schema     | Object   | Define a schema for client-side validation
+mergeData  | Function | Override default function to merge response data into the model data object
+
+Accepts a string as a shortcut for the value of the `name` property:
+
+```js
+var Cat = client.createModel('cat');
+```
+
+##### Model.get(id, callback)
+
+Return a new `document` object and perform a `document.get`.
+
+```js
+
+var note = Note.get('50341373e894ad16347efe01');
+
+note.once('sync', function () {
+  console.log('Note is found');
+});
+```
+
+#### Document
+
+Documents are instances of a model.
+
+##### document.get(callback)
+
+Get a document. Submits a `GET` request to `client.url + '/' + model.name + '/' + document.id`.
+
+Triggers a `sync` event.
+
+##### document.post(data, callback)
+
+Saves a new document. Submits a `POST` request to the `client.url + '/' + model.name`.
+If `data` is provided, it merges with the document's data object before submission.
+
+Triggers a `sync` event.
+
+##### document.put(data, callback)
+
+Updates an existing document. Submits a `PUT` request to the `client.url + '/' + model.name + '/' + document.id`.
+If `data` is provided, it merges with the document's data object before submission.
+
+Triggers a `sync` event.
+
+##### document.save(data, callback)
+
+Helper utility, will call `post` if the document is new or `put` if not.
+If `data` is provided, it merges with the document's data object before submission.
+
+Triggers a `sync` event.
+
 ### StringClient
 
 `StringClient` is what `JsonClient` is built on, and provides a base for you to write other buffering/parsing clients (like say an XML client). If you need to talk to some "raw" HTTP server, then `StringClient` is what you want, as it by default will provide you with content uploads in `application/x-www-form-url-encoded` and downloads as `text/plain`. To extend a `StringClient`, take a look at the source for `JsonClient`. Effectively, you extend it, and set the appropriate options in the constructor and implement a `write` (for put/post) and `parse` method (for all HTTP bodies), and that's it.
