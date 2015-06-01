@@ -1,6 +1,6 @@
 {
   "name": "restifier.js",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Browser capable clients for Restify.",
   "main": "index.js",
   "directories": {
