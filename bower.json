@@ -1,6 +1,6 @@
 {
   "name": "restifier",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "main": "restifier.js",
   "keywords": ["restify", "client"],
   "ignore" : ["lib", "*.yml", "index.js", "Gruntfile.js", "CHANGES.md", "CONTRIB.md", ".*", "package.json"]
