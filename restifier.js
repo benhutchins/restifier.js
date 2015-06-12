@@ -129,7 +129,6 @@ HttpClient.prototype._options = function (method, options) {
         options = { path: options };
     }
 
-    var self = this;
     var opts = {
         timeout: options.timeout || this.timeout,
         headers: options.headers || {},
@@ -140,11 +139,11 @@ HttpClient.prototype._options = function (method, options) {
         password: this.password || null,
     };
 
-    Object.keys(this.url).forEach(function (k) {
+    _.keys(this.url).forEach(function (k) {
         if (!opts[k]) {
-            opts[k] = self.url[k];
+            opts[k] = this.url[k];
         }
-    });
+    }, this);
 
     opts.headers = _.extend({}, this.headers, opts.headers);
 
@@ -167,7 +166,7 @@ HttpClient.prototype._options = function (method, options) {
 
 module.exports = HttpClient;
 
-},{"../lodash_helper":11,"../request":13,"assert-plus":14,"events":21,"url":42}],3:[function(require,module,exports){
+},{"../lodash_helper":11,"../request":14,"assert-plus":15,"events":22,"url":43}],3:[function(require,module,exports){
 'use strict';
 
 var HttpClient = require('./http_client');
@@ -181,8 +180,6 @@ module.exports = {
 };
 
 },{"./http_client":2,"./json_client":4,"./string_client":5}],4:[function(require,module,exports){
-// Copyright 2012 Mark Cavage, Inc.  All rights reserved.
-
 'use strict';
 
 var _ = require('../lodash_helper');
@@ -190,7 +187,7 @@ var _ = require('../lodash_helper');
 var assert = require('assert-plus');
 
 var codeToHttpError = require('../errors/http_error').codeToHttpError;
-var RestError = require('../errors').RestError;
+var errors = require('../errors');
 var StringClient = require('./string_client');
 
 function JsonClient(options) {
@@ -205,72 +202,84 @@ function JsonClient(options) {
 _.inherits(JsonClient, StringClient);
 
 JsonClient.prototype.write = function write(options, body, callback) {
+    assert.object(options, 'options');
     assert.ok(body !== undefined, 'body');
     assert.object(body, 'body');
 
     body = JSON.stringify(body !== null ? body : {});
+
     return (JsonClient.super_.prototype.write.call(this, options, body, callback));
 };
 
 JsonClient.prototype.parse = function parse(req, callback) {
-    var log = this.log;
+    // var log = this.log;
+    var data = req.responseText;
 
-    function parseResponse(err, req2, res, data) {
-        var obj;
+    var obj;
+    var err;
 
-        try {
-            if (data && !/^\s*$/.test(data)) {
-                obj = JSON.parse(data);
-            }
-        } catch (e) {
-            // Not really sure what else we can do here, besides
-            // make the client just keep going.
-            log.trace(e, 'Invalid JSON in response');
+    try {
+        if (data && !/^\s*$/.test(data)) {
+            obj = JSON.parse(data);
         }
-        obj = obj || {};
-
-        if (res && res.statusCode >= 400) {
-            // Upcast error to a RestError (if we can)
-            // Be nice and handle errors like
-            // { error: { code: '', message: '' } }
-            // in addition to { code: '', message: '' }.
-            if (obj.code || (obj.error && obj.error.code)) {
-                var _c = obj.code ||
-                    (obj.error ? obj.error.code : '') ||
-                    '';
-                var _m = obj.message ||
-                    (obj.error ? obj.error.message : '') ||
-                    '';
-
-                err = new RestError({
-                    message: _m,
-                    restCode: _c,
-                    statusCode: res.statusCode
-                });
-                err.name = err.restCode;
-
-                if (!/Error$/.test(err.name)) {
-                    err.name += 'Error';
-                }
-            } else if (!err) {
-                err = codeToHttpError(res.statusCode,
-                    obj.message || '', data);
-            }
-        }
-
-        if (err) {
-            err.body = obj;
-        }
-
-        callback((err || null), req2, res, obj);
+    } catch (e) {
+        // Not really sure what else we can do here, besides
+        // make the client just keep going.
+        this.log.trace(e, 'Invalid JSON in response');
     }
 
-    return (JsonClient.super_.prototype.parse.call(this, req, parseResponse));
+    obj = obj || {};
+
+    if (req.status >= 400) {
+        // Upcast error to a RestError (if we can)
+        // Be nice and handle errors like
+        // { error: { code: '', message: '' } }
+        // in addition to { code: '', message: '' }.
+        if (obj.code || (obj.error && obj.error.code)) {
+            var _c = obj.code || (obj.error ? obj.error.code : '') || '';
+            var _m = obj.message || (obj.error ? obj.error.message : '') || '';
+
+            err = new errors.RestError({
+                message: _m,
+                restCode: _c,
+                statusCode: req.status,
+                body: obj
+            });
+
+            err.name = err.restCode;
+
+            if (!/Error$/.test(err.name)) {
+                err.name += 'Error';
+            }
+        } else if (!err) {
+            err = codeToHttpError(req.status, obj.message || '', data);
+        }
+    }
+
+    if (err) {
+        err.body = obj;
+    }
+
+    callback((err || null), req, obj);
+
+    return this;
+};
+
+JsonClient.prototype.createModel = function (options) {
+    if (typeof (options) === 'string') {
+        options = {
+            name: options
+        };
+    }
+
+    assert.object(options, 'options');
+    options = options ? _.clone(options) : {};
+    return require('../model')(this, options);
 };
 
 module.exports = JsonClient;
 
-},{"../errors":8,"../errors/http_error":6,"../lodash_helper":11,"./string_client":5,"assert-plus":14}],5:[function(require,module,exports){
+},{"../errors":8,"../errors/http_error":6,"../lodash_helper":11,"../model":13,"./string_client":5,"assert-plus":15}],5:[function(require,module,exports){
 'use strict';
 
 // var crypto = require('crypto');
@@ -339,13 +348,13 @@ StringClient.prototype.read = function read(options, callback) {
 };
 
 StringClient.prototype.write = function write(options, body, callback) {
+    assert.object(options, 'options');
+
     if (body !== null && typeof (body) !== 'string') {
         body = qs.stringify(body);
     }
 
     var self = this;
-
-    options.headers = options.headers || {};
 
     // if (data) {
     //     var hash = crypto.createHash('md5');
@@ -353,10 +362,8 @@ StringClient.prototype.write = function write(options, body, callback) {
     //     options.headers['content-md5'] = hash.digest('base64');
     // }
 
-
     if (body) {
         options.body = body;
-        // options.headers['content-length'] = body.length;
     }
 
     this.request(options, function (err, req) {
@@ -367,36 +374,32 @@ StringClient.prototype.write = function write(options, body, callback) {
         }
     });
 
-    return (this);
+    return this;
 };
 
 
 StringClient.prototype.parse = function parse(req, callback) {
     var body = req.responseText;
 
-    if (body) {
-        // var md5 = res.headers['content-md5'];
+    // var md5 = res.headers['content-md5'];
 
-        // if (md5 && req.method !== 'HEAD' && res.statusCode !== 206) {
-        //     var hash = crypto.createHash('md5');
-        //     hash.update(body);
-        // }
+    // if (md5 && req.method !== 'HEAD' && res.statusCode !== 206) {
+    //     var hash = crypto.createHash('md5');
+    //     hash.update(body);
+    // }
 
-        // if (hash && md5 !== hash.digest('base64')) {
-        //     err = new Error('BadDigest');
-        //     callback(err, req, res);
-        //     return;
-        // }
+    // if (hash && md5 !== hash.digest('base64')) {
+    //     err = new Error('BadDigest');
+    //     callback(err, req, res);
+    //     return;
+    // }
 
-        callback(null, req, body);
-    } else {
-        callback(null, req, null, null);
-    }
+    callback(null, req, body);
 };
 
 module.exports = StringClient;
 
-},{"../lodash_helper":11,"./http_client":2,"assert-plus":14,"querystring":28}],6:[function(require,module,exports){
+},{"../lodash_helper":11,"./http_client":2,"assert-plus":15,"querystring":29}],6:[function(require,module,exports){
 // Because we are constructing error objects dynamically, we use an anonymous
 // function as the 'base constructor' then use arguments.callee to fill that in.
 // strict mode disallows agruments.callee, disable both of these rules.
@@ -449,7 +452,8 @@ function HttpError(options) {
     };
     this.message = options.message || self.message;
 }
-_.inherits(HttpError, Error);
+
+HttpError.prototype = Error.prototype;
 
 function TimeoutError(ms) {
     if (Error.captureStackTrace) {
@@ -459,7 +463,8 @@ function TimeoutError(ms) {
     this.message = 'connect timeout after ' + ms + 'ms';
     this.name = 'TimeoutError';
 }
-_.inherits(TimeoutError, Error);
+
+TimeoutError.prototype = Error.prototype;
 
 module.exports = {
 
@@ -492,7 +497,7 @@ module.exports = {
 };
 
 // Export all the 4xx and 5xx HTTP Status codes as Errors
-var codes = Object.keys(http_status_codes);
+var codes = _.keys(http_status_codes);
 
 codes.forEach(function (code) {
     if (code < 400) {
@@ -530,7 +535,7 @@ codes.forEach(function (code) {
     module.exports[name].displayName = module.exports[name].prototype.name = name;
 });
 
-},{"../lodash_helper":11,"./http_status_codes":7,"assert-plus":14}],7:[function(require,module,exports){
+},{"../lodash_helper":11,"./http_status_codes":7,"assert-plus":15}],7:[function(require,module,exports){
 'use strict';
 
 // pulled from node http library
@@ -597,111 +602,42 @@ module.exports = {
 },{}],8:[function(require,module,exports){
 'use strict';
 
+var _ = require('../lodash_helper');
 var httpErrors = require('./http_error');
 var restErrors = require('./rest_error');
 
-module.exports = {};
+module.exports = _.extend({}, httpErrors, restErrors);
 
-Object.keys(httpErrors).forEach(function (k) {
-    module.exports[k] = httpErrors[k];
-});
-
-// Note some of the RestErrors overwrite plain HTTP errors.
-Object.keys(restErrors).forEach(function (k) {
-    module.exports[k] = restErrors[k];
-});
-
-},{"./http_error":6,"./rest_error":9}],9:[function(require,module,exports){
+},{"../lodash_helper":11,"./http_error":6,"./rest_error":9}],9:[function(require,module,exports){
 'use strict';
 
-var _ = require('../lodash_helper');
-
 var assert = require('assert-plus');
-
-var httpErrors = require('./http_error');
-
-var slice = Function.prototype.call.bind(Array.prototype.slice);
-
-var HttpError = httpErrors.HttpError;
-
-var CODES = {
-    BadDigest: 400,
-    BadMethod: 405,
-    Internal: 500, // Don't have InternalErrorError
-    InvalidArgument: 409,
-    InvalidContent: 400,
-    InvalidCredentials: 401,
-    InvalidHeader: 400,
-    InvalidVersion: 400,
-    MissingParameter: 409,
-    NotAuthorized: 403,
-    PreconditionFailed: 412,
-    RequestExpired: 400,
-    RequestThrottled: 429,
-    ResourceNotFound: 404,
-    WrongAccept: 406
-};
 
 function RestError(options) {
     assert.object(options, 'options');
 
     options.constructorOpt = options.constructorOpt || RestError;
-    HttpError.apply(this, arguments);
+    Error.apply(this, arguments);
 
-    var self = this;
     this.restCode = options.restCode || 'Error';
-    this.body = options.body || {
-        code: self.restCode,
-        message: options.message || self.message
-    };
+    this.message = options.message;
+    this.body = options.body;
 }
-_.inherits(RestError.prototype, HttpError);
+
+RestError.prototype = Error.prototype;
 
 module.exports = {
     RestError: RestError
 };
 
-Object.keys(CODES).forEach(function (k) {
-    var name = k;
-
-    if (!/\w+Error$/.test(name)) {
-        name += 'Error';
-    }
-
-    module.exports[name] = function (cause, message) {
-        var index = 1;
-        var opts = {
-            restCode: (k === 'Internal' ? 'InternalError' : k),
-            statusCode: CODES[k]
-        };
-
-        opts.constructorOpt = arguments.callee;
-
-        if (cause && cause instanceof Error) {
-            opts.cause = cause;
-        } else if (typeof (cause) === 'object') {
-            opts.body = cause.body;
-            opts.cause = cause.cause;
-            opts.message = cause.message;
-            opts.statusCode = cause.statusCode || CODES[k];
-        } else {
-            index = 0;
-        }
-
-        var args = slice(arguments, index);
-        args.unshift(opts);
-        RestError.apply(this, args);
-    };
-    _.inherits(module.exports[name], RestError);
-    module.exports[name].displayName =
-        module.exports[name].prototype.name =
-            name;
-});
-
-},{"../lodash_helper":11,"./http_error":6,"assert-plus":14}],10:[function(require,module,exports){
+},{"assert-plus":15}],10:[function(require,module,exports){
 'use strict';
 
-var _ = require('lodash');
+var assert = require('assert-plus');
+
+var _ = require('./lodash_helper');
+var clients = require('./clients');
+var model = require('./model');
 
 function createClient (options) {
     if (typeof (options) === 'string') {
@@ -709,9 +645,6 @@ function createClient (options) {
             url: options
         };
     }
-
-    var assert = require('assert-plus');
-    var clients = require('./clients');
 
     assert.object(options, 'options');
 
@@ -776,22 +709,32 @@ function createHttpClient(options) {
     return (createClient(options));
 }
 
+function createModel(client, options) {
+    if (typeof (options) === 'string') {
+        options = {
+            name: options
+        };
+    }
+
+    assert.ok(client instanceof clients.JsonClient);
+    assert.object(options, 'options');
+
+    options = options ? _.clone(options) : {};
+    return model(client, options);
+}
+
 module.exports = {
     createClient: createClient,
     createJsonClient: createJsonClient,
     createStringClient: createStringClient,
     createHttpClient: createHttpClient,
 
-    errors: {}
+    createModel: createModel,
+
+    errors: require('./errors'),
 };
 
-var errors = require('./errors');
-Object.keys(errors).forEach(function (k) {
-    module.exports.errors[k] = errors[k];
-    module.exports[k] = errors[k];
-});
-
-},{"./clients":3,"./errors":8,"./log":12,"assert-plus":14,"lodash":45}],11:[function(require,module,exports){
+},{"./clients":3,"./errors":8,"./lodash_helper":11,"./log":12,"./model":13,"assert-plus":15}],11:[function(require,module,exports){
 'use strict';
 
 var _ = require('lodash');
@@ -810,7 +753,7 @@ _.inherits = function inherits(ctor, superCtor) {
 
 module.exports = _;
 
-},{"lodash":45}],12:[function(require,module,exports){
+},{"lodash":46}],12:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -818,6 +761,165 @@ module.exports = global.window.console;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{}],13:[function(require,module,exports){
+'use strict';
+
+var EventEmitter = require('events').EventEmitter;
+
+var assert = require('assert-plus');
+
+var _ = require('./lodash_helper');
+
+module.exports = function (client, options) {
+	assert.ok(client instanceof require('./clients').JsonClient);
+	assert.object(options, 'options');
+
+	// merge data returned by a REST response
+	options.mergeData = options.mergeData || function (doc, data) {
+		_.extend(doc.data, data.data || data);
+	};
+
+	function Document(data) {
+		this.neu = true;
+		this.data = data || {};
+	}
+	_.inherits(Document, EventEmitter);
+
+	// save a new document
+	Document.prototype.post = function (data, callback) {
+		assert.ok(this.neu, 'document is not new, cannot create');
+
+		var opts = {
+			method: 'post',
+			url: options.name,
+		};
+
+		var self = this;
+
+		return this.write(opts, data, function (err) {
+			if (!err) {
+				self.neu = false;
+			}
+
+			if (typeof callback === 'function') {
+				callback.apply(this, arguments);
+			}
+		});
+	};
+
+	// get a document
+	Document.prototype.get = function (callback) {
+		assert.fail(this.neu, 'document is new, therefore unsaved');
+		assert.string(this.id, 'document.id');
+
+		var opts = {
+			method: 'get',
+			url: options.name + '/' + this.id,
+		};
+
+		return this.write(opts, callback);
+	};
+
+	Document.prototype.del = function (callback) {
+		assert.fail(this.neu, 'document is new, therefore unsaved');
+		assert.string(this.id, 'document.id');
+
+		var opts = {
+			method: 'del',
+			url: options.name + '/' + this.id,
+		};
+
+		return this.write(opts, callback);
+	}
+
+	// save a document
+	Document.prototype.put = function (data, callback) {
+		assert.fail(this.neu, 'document is new, therefore unsaved, cannot update');
+		assert.string(this.id, 'document.id');
+
+		var opts = {
+			method: 'put',
+			url: options.name + '/' + this.id,
+		};
+
+		return this.write(opts, data, callback);
+	};
+
+	// save a document (new or old)
+	Document.prototype.save = function (data, callback) {
+		if (this.neu) {
+			return this.post(data, callback);
+		} else {
+			return this.put(data, callback);
+		}
+	};
+
+	Document.prototype.write = function (opts, data, callback) {
+		if (typeof data === 'function') {
+			callback = data;
+			data = {};
+		}
+
+		assert.object(opts);
+		assert.optionalObject(data, 'data');
+		assert.optionalFunc(callback);
+
+		_.extend(this.data, data);
+
+		var method = opts.method.toLowerCase();
+
+		if (method === 'get') {
+			client[method](opts.url, this.parse(callback));
+		} else {
+			client[method](opts.url, this.data, this.parse(callback));
+		}
+
+		return this;
+	};
+
+	// handles the response returned by the client
+	Document.prototype.parse = function (callback) {
+		var self = this;
+
+		return function (err, req, obj) {
+			if (err) {
+				callback(err);
+				self.emit('error', err);
+				return;
+			}
+
+			self.emit('beforeMerge', obj);
+
+			options.mergeData(self, obj);
+
+			self.emit('afterMerge', obj);
+
+			self.emit('sync');
+			callback.call(self, err, self, req, obj)
+		};
+	};
+
+	//
+	// ---- MODEL METHODS ----
+	//
+
+	Document.get = function (id, callback) {
+		assert.ok(typeof id === 'string' || typeof id === 'number', 'id');
+
+		var model = new Document();
+		model.neu = false;
+		model.id = String(id);
+		model.get(callback);
+
+		return model;
+	};
+
+	// alias
+	Document.getById = Document.get;
+
+	return Document;
+};
+
+},{"./clients":3,"./lodash_helper":11,"assert-plus":15,"events":22}],14:[function(require,module,exports){
 'use strict';
 
 var url = require('url');
@@ -899,7 +1001,7 @@ module.exports = function rawRequest(opts, cb) {
     }
 };
 
-},{"./errors":8,"./lodash_helper":11,"assert-plus":14,"url":42}],14:[function(require,module,exports){
+},{"./errors":8,"./lodash_helper":11,"assert-plus":15,"url":43}],15:[function(require,module,exports){
 (function (process,Buffer){
 // Copyright (c) 2012, Mark Cavage. All rights reserved.
 
@@ -1148,7 +1250,7 @@ Object.keys(assert).forEach(function (k) {
 });
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":24,"assert":15,"buffer":17,"stream":40,"util":44}],15:[function(require,module,exports){
+},{"_process":25,"assert":16,"buffer":18,"stream":41,"util":45}],16:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -1509,9 +1611,9 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":44}],16:[function(require,module,exports){
+},{"util/":45}],17:[function(require,module,exports){
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -2927,7 +3029,7 @@ function decodeUtf8Char (str) {
   }
 }
 
-},{"base64-js":18,"ieee754":19,"is-array":20}],18:[function(require,module,exports){
+},{"base64-js":19,"ieee754":20,"is-array":21}],19:[function(require,module,exports){
 var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 ;(function (exports) {
@@ -3053,7 +3155,7 @@ var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 	exports.fromByteArray = uint8ToBase64
 }(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -3139,7 +3241,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 
 /**
  * isArray
@@ -3174,7 +3276,7 @@ module.exports = isArray || function (val) {
   return !! val && '[object Array]' == str.call(val);
 };
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -3477,7 +3579,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],22:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -3502,12 +3604,12 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],23:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -3599,7 +3701,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.3.2 by @mathias */
 ;(function(root) {
@@ -4133,7 +4235,7 @@ process.umask = function() { return 0; };
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4219,7 +4321,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4306,16 +4408,16 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],28:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":26,"./encode":27}],29:[function(require,module,exports){
+},{"./decode":27,"./encode":28}],30:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":30}],30:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":31}],31:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -4408,7 +4510,7 @@ function forEach (xs, f) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_readable":32,"./_stream_writable":34,"_process":24,"core-util-is":35,"inherits":22}],31:[function(require,module,exports){
+},{"./_stream_readable":33,"./_stream_writable":35,"_process":25,"core-util-is":36,"inherits":23}],32:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -4456,7 +4558,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":33,"core-util-is":35,"inherits":22}],32:[function(require,module,exports){
+},{"./_stream_transform":34,"core-util-is":36,"inherits":23}],33:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -5411,7 +5513,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":30,"_process":24,"buffer":17,"core-util-is":35,"events":21,"inherits":22,"isarray":23,"stream":40,"string_decoder/":41,"util":16}],33:[function(require,module,exports){
+},{"./_stream_duplex":31,"_process":25,"buffer":18,"core-util-is":36,"events":22,"inherits":23,"isarray":24,"stream":41,"string_decoder/":42,"util":17}],34:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5622,7 +5724,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":30,"core-util-is":35,"inherits":22}],34:[function(require,module,exports){
+},{"./_stream_duplex":31,"core-util-is":36,"inherits":23}],35:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -6103,7 +6205,7 @@ function endWritable(stream, state, cb) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":30,"_process":24,"buffer":17,"core-util-is":35,"inherits":22,"stream":40}],35:[function(require,module,exports){
+},{"./_stream_duplex":31,"_process":25,"buffer":18,"core-util-is":36,"inherits":23,"stream":41}],36:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -6213,10 +6315,10 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 }).call(this,require("buffer").Buffer)
-},{"buffer":17}],36:[function(require,module,exports){
+},{"buffer":18}],37:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":31}],37:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":32}],38:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = require('stream');
 exports.Readable = exports;
@@ -6225,13 +6327,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":30,"./lib/_stream_passthrough.js":31,"./lib/_stream_readable.js":32,"./lib/_stream_transform.js":33,"./lib/_stream_writable.js":34,"stream":40}],38:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":31,"./lib/_stream_passthrough.js":32,"./lib/_stream_readable.js":33,"./lib/_stream_transform.js":34,"./lib/_stream_writable.js":35,"stream":41}],39:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":33}],39:[function(require,module,exports){
+},{"./lib/_stream_transform.js":34}],40:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":34}],40:[function(require,module,exports){
+},{"./lib/_stream_writable.js":35}],41:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6360,7 +6462,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":21,"inherits":22,"readable-stream/duplex.js":29,"readable-stream/passthrough.js":36,"readable-stream/readable.js":37,"readable-stream/transform.js":38,"readable-stream/writable.js":39}],41:[function(require,module,exports){
+},{"events":22,"inherits":23,"readable-stream/duplex.js":30,"readable-stream/passthrough.js":37,"readable-stream/readable.js":38,"readable-stream/transform.js":39,"readable-stream/writable.js":40}],42:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6583,7 +6685,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":17}],42:[function(require,module,exports){
+},{"buffer":18}],43:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7292,14 +7394,14 @@ function isNullOrUndefined(arg) {
   return  arg == null;
 }
 
-},{"punycode":25,"querystring":28}],43:[function(require,module,exports){
+},{"punycode":26,"querystring":29}],44:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],44:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -7889,7 +7991,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":43,"_process":24,"inherits":22}],45:[function(require,module,exports){
+},{"./support/isBuffer":44,"_process":25,"inherits":23}],46:[function(require,module,exports){
 (function (global){
 /**
  * @license
