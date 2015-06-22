@@ -1,5 +1,5 @@
 {
-  "name": "restifier",
+  "name": "restifier.js",
   "version": "1.0.4",
   "main": "restifier.js",
   "keywords": ["restify", "client"],
